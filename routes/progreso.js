@@ -3,11 +3,13 @@ import db from "../db.js";
 
 const router = express.Router();
 
+// Obtener cliente Supabase directo
+const supabase = db.supabase;
+
 // ============================================
 // SOLO CURSOS ESTÁTICOS TALENTO HUMANO
 // ============================================
 
-// Mapeo de IDs a nombres de cursos completos (para mostrar)
 const CURSOS_MAP = {
   "derechos_laborales": "La base de la Justicia Laboral Igualdad y Cero Discriminación",
   "igualdad_genero": "Equidad por Ley",
@@ -15,7 +17,7 @@ const CURSOS_MAP = {
   "otrosRelacionados": "Igualdad Salarial"
 };
 
-const CURSOS_IDS = Object.keys(CURSOS_MAP); // ["derechos_laborales", "igualdad_genero", ...]
+const CURSOS_IDS = ["derechos_laborales", "igualdad_genero", "erradicacion_Violencia", "otrosRelacionados"];
 
 // 1️⃣ OBTENER PROGRESO DEL USUARIO (lo crea si no existe)
 router.post("/get", async (req, res) => {
@@ -23,24 +25,34 @@ router.post("/get", async (req, res) => {
     const { nombre } = req.body;
 
     if (!nombre) {
-      return res.status(400).json({ message: "Nombre requerido" });
+      return res.status(400).json({ ok: false, message: "Nombre requerido" });
     }
 
     // Buscar usuario en usuariosprogreso
-    const [rows] = await db.query(
-      `SELECT progreso, prueba_aprobada FROM usuariosprogreso WHERE nombre = $1 AND proceso = $2`,
-      [nombre, "talento_humano"]
-    );
+    const { data: rows, error: selectError } = await supabase
+      .from("usuariosprogreso")
+      .select("progreso, prueba_aprobada")
+      .eq("nombre", nombre)
+      .eq("proceso", "talento_humano");
+
+    if (selectError) throw selectError;
 
     // Si NO existe, crearlo
     if (!rows || rows.length === 0) {
       console.log(`✅ Creando progreso inicial para: ${nombre}`);
-      await db.query(
-        `INSERT INTO usuariosprogreso (nombre, proceso, progreso, prueba_aprobada)
-         VALUES ($1, $2, 0, FALSE)
-         ON CONFLICT DO NOTHING`,
-        [nombre, "talento_humano"]
-      );
+      const { error: insertError } = await supabase
+        .from("usuariosprogreso")
+        .insert([{
+          nombre,
+          proceso: "talento_humano",
+          progreso: 0,
+          prueba_aprobada: false
+        }]);
+
+      if (insertError) {
+        console.error("⚠️ Error al crear:", insertError.message);
+        // No es crítico si ya existe
+      }
 
       return res.json({
         ok: true,
@@ -58,7 +70,7 @@ router.post("/get", async (req, res) => {
 
   } catch (err) {
     console.error("❌ Error en /progreso/get:", err);
-    res.status(500).json({ ok: false, message: "Error en el servidor" });
+    res.status(500).json({ ok: false, message: err.message });
   }
 });
 
@@ -68,41 +80,60 @@ router.post("/item", async (req, res) => {
     const { nombre, curso, item_id } = req.body;
 
     if (!nombre || !curso || item_id === undefined) {
-      return res.status(400).json({ message: "Datos incompletos" });
+      return res.status(400).json({ ok: false, message: "Datos incompletos" });
     }
 
-    // Guardar en progreso_cursos
-    await db.query(
-      `INSERT INTO progreso_cursos (nombre, curso, item_id, completado)
-       VALUES ($1, $2, $3, TRUE)
-       ON CONFLICT (nombre, curso, item_id) DO UPDATE SET completado = TRUE`,
-      [nombre, curso, item_id]
-    );
+    console.log(`📝 Marcando nivel ${item_id} completado en ${curso} para ${nombre}`);
 
-    res.json({ ok: true, message: "Ítem guardado" });
+    // Guardar en progreso_cursos usando Supabase
+    const { error: upsertError } = await supabase
+      .from("progreso_cursos")
+      .upsert([{
+        nombre,
+        curso,
+        item_id,
+        completado: true
+      }], { onConflict: "nombre,curso,item_id" });
+
+    if (upsertError) throw upsertError;
+
+    console.log(`✅ Nivel ${item_id} guardado`);
+    res.json({ ok: true, message: "Nivel guardado" });
 
   } catch (err) {
     console.error("❌ Error en /progreso/item:", err);
-    res.status(500).json({ message: "Error en el servidor" });
+    res.status(500).json({ ok: false, message: err.message });
   }
 });
 
-// 3️⃣ OBTENER ÍTEMS COMPLETADOS DE UN CURSO
+// 3️⃣ OBTENER NIVELES COMPLETADOS DE UN CURSO
 router.get("/items/:nombre/:curso", async (req, res) => {
   try {
     const { nombre, curso } = req.params;
 
-    const [rows] = await db.query(
-      `SELECT item_id FROM progreso_cursos
-       WHERE nombre = $1 AND curso = $2 AND completado = TRUE`,
-      [nombre, curso]
-    );
+    if (!nombre || !curso) {
+      return res.status(400).json({ ok: false, message: "Parámetros incompletos" });
+    }
 
-    res.json({ ok: true, completados: rows.map(r => r.item_id) });
+    const { data: items, error: selectError } = await supabase
+      .from("progreso_cursos")
+      .select("item_id")
+      .eq("nombre", nombre)
+      .eq("curso", curso)
+      .eq("completado", true);
+
+    if (selectError) throw selectError;
+
+    const completados = items.map(i => i.item_id);
+
+    res.json({
+      ok: true,
+      completados
+    });
 
   } catch (err) {
     console.error("❌ Error en /progreso/items:", err);
-    res.status(500).json({ ok: false, message: "Error" });
+    res.status(500).json({ ok: false, message: err.message });
   }
 });
 
@@ -122,45 +153,78 @@ router.post("/marcar-curso-completado", async (req, res) => {
       return res.status(400).json({ ok: false, message: "Curso no válido" });
     }
 
-    // 1. Guardar en cursos_completados (usar el ID del curso)
-    await db.query(
-      `INSERT INTO cursos_completados (nombre, curso, fecha_completado, progreso)
-       VALUES ($1, $2, NOW(), 100)
-       ON CONFLICT (nombre, curso) DO UPDATE SET fecha_completado = NOW()`,
-      [nombre, curso]
-    );
+    // 1. Guardar en cursos_completados usando Supabase directo
+    const { data: insertData, error: insertError } = await supabase
+      .from("cursos_completados")
+      .upsert([{
+        nombre,
+        curso,
+        fecha_completado: new Date().toISOString(),
+        progreso: 100
+      }], { onConflict: "nombre,curso" })
+      .select();
+
+    if (insertError) {
+      console.error("❌ Error al insertar en cursos_completados:", insertError);
+      throw insertError;
+    }
+
+    console.log(`✅ Insertado en cursos_completados:`, insertData);
 
     // 2. Contar cuántos de los 4 cursos ha completado
-    const [cursosResult] = await db.query(
-      `SELECT COUNT(*) as total FROM cursos_completados 
-       WHERE nombre = $1 AND curso = ANY($2)`,
-      [nombre, CURSOS_IDS]
-    );
+    const { data: countData, error: countError } = await supabase
+      .from("cursos_completados")
+      .select("curso", { count: "exact" })
+      .eq("nombre", nombre)
+      .in("curso", CURSOS_IDS);
 
-    const cursoCompletados = cursosResult[0]?.total ?? 0;
+    if (countError) {
+      console.error("❌ Error al contar cursos:", countError);
+      throw countError;
+    }
+
+    const cursoCompletados = countData?.length ?? 0;
     const nuevoProgreso = Math.min(100, (cursoCompletados / 4) * 100);
 
     console.log(`✅ Cursos completados: ${cursoCompletados}/4 = ${nuevoProgreso}% progreso`);
 
     // 3. ACTUALIZAR usuariosprogreso
-    const updateResult = await db.query(
-      `UPDATE usuariosprogreso 
-       SET progreso = $1, updated_at = NOW()
-       WHERE nombre = $2 AND proceso = $3
-       RETURNING progreso, prueba_aprobada`,
-      [nuevoProgreso, nombre, "talento_humano"]
-    );
+    const { data: updateData, error: updateError } = await supabase
+      .from("usuariosprogreso")
+      .update({
+        progreso: nuevoProgreso,
+        updated_at: new Date().toISOString()
+      })
+      .eq("nombre", nombre)
+      .eq("proceso", "talento_humano")
+      .select();
 
-    const [updated] = updateResult;
+    if (updateError) {
+      console.error("❌ Error al actualizar usuariosprogreso:", updateError);
+      throw updateError;
+    }
 
-    if (!updated || updated.length === 0) {
+    if (!updateData || updateData.length === 0) {
       // Si no existe, crear
       console.log(`📝 Creando usuariosprogreso para ${nombre} con progreso ${nuevoProgreso}%`);
-      await db.query(
-        `INSERT INTO usuariosprogreso (nombre, proceso, progreso, prueba_aprobada)
-         VALUES ($1, $2, $3, FALSE)`,
-        [nombre, "talento_humano", nuevoProgreso]
-      );
+      const { data: insertProgreso, error: insertError2 } = await supabase
+        .from("usuariosprogreso")
+        .insert([{
+          nombre,
+          proceso: "talento_humano",
+          progreso: nuevoProgreso,
+          prueba_aprobada: false
+        }])
+        .select();
+
+      if (insertError2) {
+        console.error("❌ Error creando usuariosprogreso:", insertError2);
+        throw insertError2;
+      }
+
+      console.log(`✅ Creado usuariosprogreso:`, insertProgreso);
+    } else {
+      console.log(`✅ Actualizado usuariosprogreso:`, updateData);
     }
 
     res.json({
@@ -172,7 +236,7 @@ router.post("/marcar-curso-completado", async (req, res) => {
 
   } catch (err) {
     console.error("❌ Error en /progreso/marcar-curso-completado:", err);
-    res.status(500).json({ ok: false, message: "Error en el servidor" });
+    res.status(500).json({ ok: false, message: err.message || "Error en el servidor" });
   }
 });
 
@@ -187,42 +251,41 @@ router.put("/update", async (req, res) => {
 
     console.log(`📝 Actualizando prueba para ${nombre}: aprobada=${prueba_aprobada}`);
 
-    const result = await db.query(
-      `UPDATE usuariosprogreso 
-       SET prueba_aprobada = $1, updated_at = NOW()
-       WHERE nombre = $2 AND proceso = $3
-       RETURNING progreso, prueba_aprobada`,
-      [prueba_aprobada, nombre, "talento_humano"]
-    );
+    const { data: updateData, error: updateError } = await supabase
+      .from("usuariosprogreso")
+      .update({
+        prueba_aprobada,
+        updated_at: new Date().toISOString()
+      })
+      .eq("nombre", nombre)
+      .eq("proceso", "talento_humano")
+      .select();
 
-    const [rows] = result;
+    if (updateError) throw updateError;
 
-    if (!rows || rows.length === 0) {
+    if (!updateData || updateData.length === 0) {
       // Crear si no existe
       console.log(`📝 Creando usuariosprogreso para ${nombre} con prueba=${prueba_aprobada}`);
-      await db.query(
-        `INSERT INTO usuariosprogreso (nombre, proceso, progreso, prueba_aprobada)
-         VALUES ($1, $2, 0, $3)`,
-        [nombre, "talento_humano", prueba_aprobada]
-      );
+      const { error: insertError } = await supabase
+        .from("usuariosprogreso")
+        .insert([{
+          nombre,
+          proceso: "talento_humano",
+          progreso: 0,
+          prueba_aprobada
+        }]);
 
-      return res.json({
-        ok: true,
-        message: "Usuario creado y prueba actualizada",
-        prueba_aprobada
-      });
+      if (insertError) throw insertError;
     }
 
     res.json({
       ok: true,
-      message: "Prueba actualizada",
-      progreso: rows[0].progreso,
-      prueba_aprobada: rows[0].prueba_aprobada
+      prueba_aprobada: updateData?.[0]?.prueba_aprobada ?? prueba_aprobada
     });
 
   } catch (err) {
     console.error("❌ Error en /progreso/update:", err);
-    res.status(500).json({ ok: false, message: "Error en el servidor" });
+    res.status(500).json({ ok: false, message: err.message });
   }
 });
 
@@ -231,12 +294,13 @@ router.get("/cursos-completados/:nombre", async (req, res) => {
   try {
     const { nombre } = req.params;
 
-    const [rows] = await db.query(
-      `SELECT curso, fecha_completado FROM cursos_completados 
-       WHERE nombre = $1 
-       ORDER BY fecha_completado DESC`,
-      [nombre]
-    );
+    const { data: rows, error: selectError } = await supabase
+      .from("cursos_completados")
+      .select("curso, fecha_completado")
+      .eq("nombre", nombre)
+      .order("fecha_completado", { ascending: false });
+
+    if (selectError) throw selectError;
 
     // Devolver array de IDs de cursos (para que el frontend pueda hacer .includes())
     const cursosIds = rows.map(r => r.curso);
@@ -253,7 +317,7 @@ router.get("/cursos-completados/:nombre", async (req, res) => {
 
   } catch (err) {
     console.error("❌ Error en /progreso/cursos-completados:", err);
-    res.status(500).json({ ok: false, message: "Error" });
+    res.status(500).json({ ok: false, message: err.message });
   }
 });
 
@@ -266,25 +330,25 @@ router.post("/curso-completado", async (req, res) => {
       return res.status(400).json({ ok: false, message: "Datos incompletos" });
     }
 
-    const [rows] = await db.query(
-      `SELECT curso, fecha_completado FROM cursos_completados
-       WHERE nombre = $1 AND curso = $2`,
-      [nombre, curso]
-    );
+    const { data: rows, error: selectError } = await supabase
+      .from("cursos_completados")
+      .select("curso")
+      .eq("nombre", nombre)
+      .eq("curso", curso);
 
-    const estaCompletado = rows.length > 0;
+    if (selectError) throw selectError;
+
+    const completado = rows && rows.length > 0;
 
     res.json({
       ok: true,
-      completado: estaCompletado,
-      fecha_completado: estaCompletado ? rows[0].fecha_completado : null
+      completado
     });
 
   } catch (err) {
     console.error("❌ Error en /progreso/curso-completado:", err);
-    res.status(500).json({ ok: false, message: "Error" });
+    res.status(500).json({ ok: false, message: err.message });
   }
 });
 
 export default router;
-
