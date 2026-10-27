@@ -118,14 +118,13 @@ router.get('/disponibles', async (req, res) => {
              ORDER BY p.nombre, c.creado_en DESC`
         );
 
-        console.log('✅ Cursos disponibles obtenidos:', cursos.length);
 
         res.json({
             success: true,
             data: cursos
         });
     } catch (error) {
-        console.error('❌ Error en GET /api/cursos/disponibles:', error);
+
         res.status(500).json({
             success: false,
             message: 'Error al obtener cursos disponibles'
