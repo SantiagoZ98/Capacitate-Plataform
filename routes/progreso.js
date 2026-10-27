@@ -7,12 +7,15 @@ const router = express.Router();
 // SOLO CURSOS ESTÁTICOS TALENTO HUMANO
 // ============================================
 
-const CURSOS_TTHH = [
-  { id: 1, nombre: "La base de la Justicia Laboral Igualdad y Cero Discriminación" },
-  { id: 2, nombre: "Equidad por Ley" },
-  { id: 3, nombre: "Derechos Laborales" },
-  { id: 4, nombre: "Igualdad Salarial" }
-];
+// Mapeo de IDs a nombres de cursos completos (para mostrar)
+const CURSOS_MAP = {
+  "derechos_laborales": "La base de la Justicia Laboral Igualdad y Cero Discriminación",
+  "igualdad_genero": "Equidad por Ley",
+  "erradicacion_Violencia": "Derechos Laborales",
+  "otrosRelacionados": "Igualdad Salarial"
+};
+
+const CURSOS_IDS = Object.keys(CURSOS_MAP); // ["derechos_laborales", "igualdad_genero", ...]
 
 // 1️⃣ OBTENER PROGRESO DEL USUARIO (lo crea si no existe)
 router.post("/get", async (req, res) => {
@@ -114,7 +117,12 @@ router.post("/marcar-curso-completado", async (req, res) => {
 
     console.log(`📚 Completando curso: ${curso} para ${nombre}`);
 
-    // 1. Guardar en cursos_completados
+    // Validar que curso sea uno de los 4 IDs válidos
+    if (!CURSOS_IDS.includes(curso)) {
+      return res.status(400).json({ ok: false, message: "Curso no válido" });
+    }
+
+    // 1. Guardar en cursos_completados (usar el ID del curso)
     await db.query(
       `INSERT INTO cursos_completados (nombre, curso, fecha_completado, progreso)
        VALUES ($1, $2, NOW(), 100)
@@ -122,12 +130,11 @@ router.post("/marcar-curso-completado", async (req, res) => {
       [nombre, curso]
     );
 
-    // 2. Calcular progreso: cuántos cursos completó de 4
-    const cursosNombres = CURSOS_TTHH.map(c => c.nombre);
+    // 2. Contar cuántos de los 4 cursos ha completado
     const [cursosResult] = await db.query(
       `SELECT COUNT(*) as total FROM cursos_completados 
        WHERE nombre = $1 AND curso = ANY($2)`,
-      [nombre, cursosNombres]
+      [nombre, CURSOS_IDS]
     );
 
     const cursoCompletados = cursosResult[0]?.total ?? 0;
@@ -148,6 +155,7 @@ router.post("/marcar-curso-completado", async (req, res) => {
 
     if (!updated || updated.length === 0) {
       // Si no existe, crear
+      console.log(`📝 Creando usuariosprogreso para ${nombre} con progreso ${nuevoProgreso}%`);
       await db.query(
         `INSERT INTO usuariosprogreso (nombre, proceso, progreso, prueba_aprobada)
          VALUES ($1, $2, $3, FALSE)`,
@@ -191,6 +199,7 @@ router.put("/update", async (req, res) => {
 
     if (!rows || rows.length === 0) {
       // Crear si no existe
+      console.log(`📝 Creando usuariosprogreso para ${nombre} con prueba=${prueba_aprobada}`);
       await db.query(
         `INSERT INTO usuariosprogreso (nombre, proceso, progreso, prueba_aprobada)
          VALUES ($1, $2, 0, $3)`,
@@ -229,10 +238,15 @@ router.get("/cursos-completados/:nombre", async (req, res) => {
       [nombre]
     );
 
+    // Devolver array de IDs de cursos (para que el frontend pueda hacer .includes())
+    const cursosIds = rows.map(r => r.curso);
+
     res.json({
       ok: true,
-      cursos_completados: rows.map(r => ({
+      cursosCompletados: cursosIds, // Array de IDs: ["derechos_laborales", "igualdad_genero", ...]
+      detalles: rows.map(r => ({
         curso: r.curso,
+        nombre_completo: CURSOS_MAP[r.curso] || r.curso,
         fecha: r.fecha_completado
       }))
     });
@@ -243,4 +257,34 @@ router.get("/cursos-completados/:nombre", async (req, res) => {
   }
 });
 
+// 7️⃣ VERIFICAR SI UN CURSO ESTÁ COMPLETADO
+router.post("/curso-completado", async (req, res) => {
+  try {
+    const { nombre, curso } = req.body;
+
+    if (!nombre || !curso) {
+      return res.status(400).json({ ok: false, message: "Datos incompletos" });
+    }
+
+    const [rows] = await db.query(
+      `SELECT curso, fecha_completado FROM cursos_completados
+       WHERE nombre = $1 AND curso = $2`,
+      [nombre, curso]
+    );
+
+    const estaCompletado = rows.length > 0;
+
+    res.json({
+      ok: true,
+      completado: estaCompletado,
+      fecha_completado: estaCompletado ? rows[0].fecha_completado : null
+    });
+
+  } catch (err) {
+    console.error("❌ Error en /progreso/curso-completado:", err);
+    res.status(500).json({ ok: false, message: "Error" });
+  }
+});
+
 export default router;
+
