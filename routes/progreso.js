@@ -25,9 +25,9 @@ router.post("/get", async (req, res) => {
       await db.query(
         `
         INSERT INTO usuariosprogreso (nombre, proceso, progreso, prueba_aprobada)
-        VALUES ($1, $2, 0, FALSE)
+        VALUES ($1, $2, $3, $4)
         `,
-        [nombre, "talento_humano"] // Puedes cambiar el proceso si lo usas más adelante
+        [nombre, "talento_humano", 0, false] // Puedes cambiar el proceso si lo usas más adelante
       );
 
       // Respuesta inicial para el frontend
@@ -151,10 +151,19 @@ router.post("/update-general", async (req, res) => {
       return res.status(400).json({ message: "Falta nuevoProgreso" });
     }
 
-    await db.query(
+    const [actualizados] = await db.query(
       `UPDATE usuariosprogreso SET progreso = $1 WHERE nombre = $2`,
       [nuevoProgreso, nombre]
     );
+
+    // Si el usuario aún no tiene fila, crearla (antes el UPDATE no hacía nada)
+    if (!actualizados || actualizados.length === 0) {
+      await db.query(
+        `INSERT INTO usuariosprogreso (nombre, proceso, progreso, prueba_aprobada)
+         VALUES ($1, $2, $3, $4)`,
+        [nombre, "talento_humano", nuevoProgreso, false]
+      );
+    }
 
     res.json({ message: "Progreso actualizado" });
 
