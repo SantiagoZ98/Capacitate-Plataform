@@ -176,64 +176,6 @@ router.get('/buscar-reporte', authenticateAdminProceso, async (req, res) => {
   }
 });
 
-/**
- * GET /api/usuarios/:id/reporte-cursos
- * Obtener todos los cursos de un usuario con su estado, progreso y resultado de evaluación
- */
-router.get('/:id/reporte-cursos', authenticateAdminProceso, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const [userRows] = await db.query(
-      `SELECT id, nombre, cedula_identidad, proceso, cargo FROM personal WHERE id = $1`,
-      [id]
-    );
-    if (userRows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
-    }
-
-    const [inscripciones] = await db.query(
-      `SELECT
-         i.id,
-         i.usuario_id,
-         i.curso_id,
-         i.fecha_inscripcion,
-         i.estado,
-         c.nombre                AS curso_nombre,
-         c.descripcion,
-         c.fecha_fin,
-         p.nombre                AS proceso,
-         (SELECT COUNT(*)
-          FROM modulos m
-          WHERE m.curso_id = c.id AND m.activo = true)                           AS total_modulos,
-         (SELECT COUNT(*)
-          FROM progreso_modulos pm
-          WHERE pm.usuario_id = i.usuario_id AND pm.curso_id = c.id)             AS modulos_completados,
-         (SELECT ie2.puntaje
-          FROM intentos_evaluacion ie2
-          WHERE ie2.usuario_id = i.usuario_id AND ie2.curso_id = i.curso_id
-          ORDER BY ie2.puntaje DESC
-          LIMIT 1)                                                                AS mejor_puntaje,
-         (SELECT ie2.aprobado
-          FROM intentos_evaluacion ie2
-          WHERE ie2.usuario_id = i.usuario_id AND ie2.curso_id = i.curso_id
-          ORDER BY ie2.puntaje DESC
-          LIMIT 1)                                                                AS evaluacion_aprobada
-       FROM inscripciones i
-       JOIN cursos  c ON i.curso_id    = c.id
-       JOIN procesos p ON c.proceso_id = p.id
-       WHERE i.usuario_id = $1
-       ORDER BY p.nombre, i.fecha_inscripcion DESC`,
-      [id]
-    );
-
-    res.json({ success: true, usuario: userRows[0], data: inscripciones });
-  } catch (err) {
-    console.error('❌ Error en reporte-cursos:', err);
-    res.status(500).json({ success: false, message: 'Error al obtener reporte de cursos' });
-  }
-});
-
 export default router;
 
 // RUTA PARA LISTAR LOS USUARIOS
