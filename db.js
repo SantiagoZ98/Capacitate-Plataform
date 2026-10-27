@@ -112,7 +112,19 @@ async function handleInsertQuery(sql, params) {
         obj[col] = params[idx];
     });
     
-    const { data, error } = await supabase.from(tableName).insert([obj]).select();
+    // ON CONFLICT (cols) DO NOTHING | DO UPDATE ... -> upsert de Supabase
+    const conflictMatch = sql.match(/ON\s+CONFLICT\s*\(([^)]+)\)\s*DO\s+(NOTHING|UPDATE)/i);
+    let query;
+    if (conflictMatch) {
+        const onConflict = conflictMatch[1].split(',').map(c => c.trim()).join(',');
+        const doNothing = conflictMatch[2].toUpperCase() === 'NOTHING';
+        query = supabase.from(tableName)
+            .upsert([obj], { onConflict, ignoreDuplicates: doNothing })
+            .select();
+    } else {
+        query = supabase.from(tableName).insert([obj]).select();
+    }
+    const { data, error } = await query;
     
     if (error) throw error;
     
