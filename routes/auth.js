@@ -322,7 +322,7 @@ router.post('/procesos/register', async (req, res) => {
         // 3. Insertar nuevo administrador
         const insertQuery = `
             INSERT INTO adminProcesos (nombre, cedula, password, proceso_name, activo, primer_login)
-            VALUES ($1, $2, $3, $4, true, true)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id, nombre, cedula, proceso_name, primer_login
         `;
         
@@ -332,7 +332,9 @@ router.post('/procesos/register', async (req, res) => {
             nombre,
             cedula,
             hashedPassword,
-            proceso_name
+            proceso_name,
+            true, // activo
+            true  // primer_login
         ]);
         
         // USAR EL HELPER para extraer filas
