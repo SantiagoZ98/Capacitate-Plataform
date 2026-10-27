@@ -49,6 +49,14 @@ router.post("/login", async (req, res) => {
       usuario = newRows[0];
     }
 
+    // Progreso real guardado en usuariosprogreso (no en personal)
+    const [progresoRows] = await db.query(
+      "SELECT progreso, prueba_aprobada FROM usuariosprogreso WHERE nombre = $1",
+      [usuario.nombre]
+    );
+    const progresoUsuario = progresoRows?.[0]?.progreso ?? 0;
+    const pruebaAprobada = progresoRows?.[0]?.prueba_aprobada ?? false;
+
     // 🟦 GENERAR JWT TOKEN
     const token = jwt.sign(
       { 
@@ -68,8 +76,8 @@ router.post("/login", async (req, res) => {
         id: usuario.id,
         nombre: usuario.nombre,
         cedula: usuario.cedula_identidad,
-        progreso: usuario.progreso || 0,
-        prueba_aprobada: usuario.prueba_aprobada || 0
+        progreso: progresoUsuario,
+        prueba_aprobada: pruebaAprobada
       }
     });
 
