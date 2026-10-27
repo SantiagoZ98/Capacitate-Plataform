@@ -163,6 +163,21 @@ router.post("/marcar-curso-completado", async (req, res) => {
       return res.status(400).json({ ok: false, message: "Curso no válido" });
     }
 
+    // 0. BUSCAR EL PROCESO DEL USUARIO EN LA TABLA PERSONAL
+    const { data: personalData, error: personalError } = await supabase
+      .from("personal")
+      .select("proceso")
+      .eq("nombre", nombre)
+      .single();
+
+    if (personalError) {
+      console.warn(`⚠️ No se encontró proceso para ${nombre}:`, personalError.message);
+      // No es crítico, continuamos
+    }
+
+    const procesoUsuario = personalData?.proceso || "Administrativo"; // Default si no existe
+    console.log(`👤 Proceso del usuario: ${procesoUsuario}`);
+
     // 1. Guardar en cursos_completados usando Supabase directo
     const { data: insertData, error: insertError } = await supabase
       .from("cursos_completados")
@@ -198,7 +213,7 @@ router.post("/marcar-curso-completado", async (req, res) => {
 
     console.log(`✅ Cursos completados: ${cursoCompletados}/4 = ${nuevoProgreso}% progreso`);
 
-    // 3. ACTUALIZAR usuariosprogreso
+    // 3. ACTUALIZAR usuariosprogreso CON EL PROCESO CORRECTO
     const { data: updateData, error: updateError } = await supabase
       .from("usuariosprogreso")
       .update({
@@ -206,7 +221,7 @@ router.post("/marcar-curso-completado", async (req, res) => {
         updated_at: new Date().toISOString()
       })
       .eq("nombre", nombre)
-      .eq("proceso", "talento_humano")
+      .eq("proceso", procesoUsuario)
       .select();
 
     if (updateError) {
@@ -221,7 +236,7 @@ router.post("/marcar-curso-completado", async (req, res) => {
         .from("usuariosprogreso")
         .insert([{
           nombre,
-          proceso: "talento_humano",
+          proceso: procesoUsuario,
           progreso: nuevoProgreso,
           prueba_aprobada: false
         }])
@@ -241,7 +256,8 @@ router.post("/marcar-curso-completado", async (req, res) => {
       ok: true,
       message: "Curso completado",
       progreso: nuevoProgreso,
-      cursos_completados: cursoCompletados
+      cursos_completados: cursoCompletados,
+      proceso: procesoUsuario
     });
 
   } catch (err) {
