@@ -115,6 +115,8 @@ router.get("/items/:nombre/:curso", async (req, res) => {
       return res.status(400).json({ ok: false, message: "Parámetros incompletos" });
     }
 
+    console.log(`📖 Leyendo items completados para ${nombre} en ${curso}`);
+
     const { data: items, error: selectError } = await supabase
       .from("progreso_cursos")
       .select("item_id")
@@ -122,9 +124,17 @@ router.get("/items/:nombre/:curso", async (req, res) => {
       .eq("curso", curso)
       .eq("completado", true);
 
-    if (selectError) throw selectError;
+    if (selectError) {
+      console.error("❌ Error al leer progreso_cursos:", selectError);
+      throw selectError;
+    }
 
-    const completados = items.map(i => i.item_id);
+    console.log(`✅ Items encontrados:`, items);
+
+    // Convertir item_id a número para que coincida con frontend
+    const completados = items ? items.map(i => Number(i.item_id)) : [];
+
+    console.log(`✅ Devolviendo completados (números):`, completados);
 
     res.json({
       ok: true,
