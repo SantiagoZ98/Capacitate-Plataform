@@ -22,7 +22,7 @@ router.get('/asistencia/proceso', authenticateAdminProceso, async (req, res) => 
     const { data: cursosCompletados, error: errorCursos } = await supabase
       .from('cursos_completados')
       .select('nombre, curso, fecha_completado')
-      .in('curso', ['derechos_laborales', 'igualdad_genero', 'talento_humano', 'otrosRelacionados']);
+      .in('curso', CURSOS_ESTATICOS);
 
     if (errorCursos) {
       console.error('❌ Error consultando cursos completados:', errorCursos);
