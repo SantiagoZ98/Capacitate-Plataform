@@ -28,23 +28,33 @@ router.post("/get", async (req, res) => {
       return res.status(400).json({ ok: false, message: "Nombre requerido" });
     }
 
-    // Buscar usuario en usuariosprogreso
+    // 0. OBTENER PROCESO REAL DEL USUARIO DESDE TABLA PERSONAL
+    const { data: personalData, error: personalError } = await supabase
+      .from("personal")
+      .select("proceso")
+      .eq("nombre", nombre)
+      .single();
+
+    const procesoUsuario = personalData?.proceso || "Administrativo";
+    console.log(`👤 Proceso del usuario en /get: ${procesoUsuario}`);
+
+    // Buscar usuario en usuariosprogreso CON PROCESO CORRECTO
     const { data: rows, error: selectError } = await supabase
       .from("usuariosprogreso")
       .select("progreso, prueba_aprobada")
       .eq("nombre", nombre)
-      .eq("proceso", "talento_humano");
+      .eq("proceso", procesoUsuario);
 
     if (selectError) throw selectError;
 
     // Si NO existe, crearlo
     if (!rows || rows.length === 0) {
-      console.log(`✅ Creando progreso inicial para: ${nombre}`);
+      console.log(`✅ Creando progreso inicial para: ${nombre} con proceso: ${procesoUsuario}`);
       const { error: insertError } = await supabase
         .from("usuariosprogreso")
         .insert([{
           nombre,
-          proceso: "talento_humano",
+          proceso: procesoUsuario,
           progreso: 0,
           prueba_aprobada: false
         }]);
@@ -57,7 +67,8 @@ router.post("/get", async (req, res) => {
       return res.json({
         ok: true,
         progreso: 0,
-        pruebaAprobada: false
+        prueba_aprobada: false,
+        proceso: procesoUsuario
       });
     }
 
@@ -65,7 +76,8 @@ router.post("/get", async (req, res) => {
     res.json({
       ok: true,
       progreso: rows[0].progreso ?? 0,
-      pruebaAprobada: rows[0].prueba_aprobada ?? false
+      prueba_aprobada: rows[0].prueba_aprobada ?? false,
+      proceso: procesoUsuario
     });
 
   } catch (err) {
@@ -277,6 +289,16 @@ router.put("/update", async (req, res) => {
 
     console.log(`📝 Actualizando prueba para ${nombre}: aprobada=${prueba_aprobada}`);
 
+    // 0. OBTENER PROCESO REAL DEL USUARIO DESDE TABLA PERSONAL
+    const { data: personalData, error: personalError } = await supabase
+      .from("personal")
+      .select("proceso")
+      .eq("nombre", nombre)
+      .single();
+
+    const procesoUsuario = personalData?.proceso || "Administrativo";
+    console.log(`👤 Proceso del usuario en /update: ${procesoUsuario}`);
+
     const { data: updateData, error: updateError } = await supabase
       .from("usuariosprogreso")
       .update({
@@ -284,19 +306,19 @@ router.put("/update", async (req, res) => {
         updated_at: new Date().toISOString()
       })
       .eq("nombre", nombre)
-      .eq("proceso", "talento_humano")
+      .eq("proceso", procesoUsuario)
       .select();
 
     if (updateError) throw updateError;
 
     if (!updateData || updateData.length === 0) {
       // Crear si no existe
-      console.log(`📝 Creando usuariosprogreso para ${nombre} con prueba=${prueba_aprobada}`);
+      console.log(`📝 Creando usuariosprogreso para ${nombre} con prueba=${prueba_aprobada} y proceso=${procesoUsuario}`);
       const { error: insertError } = await supabase
         .from("usuariosprogreso")
         .insert([{
           nombre,
-          proceso: "talento_humano",
+          proceso: procesoUsuario,
           progreso: 0,
           prueba_aprobada
         }]);
