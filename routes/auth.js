@@ -5,6 +5,7 @@ import db from '../db.js';
 
 const router = express.Router();
 const SECRET = process.env.JWT_SECRET;
+const supabase = db.supabase;
 
 const getRowsFromResult = (result) => {
     if (!result) {
@@ -479,27 +480,33 @@ router.post('/procesos/cambiar-password', authenticateProceso, async (req, res) 
         // Encriptar la nueva contraseña
         const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-        // Actualizar contraseña y marcar primer_login como false
-        const updateQuery = `
-            UPDATE adminProcesos 
-            SET password = $1, 
-                primer_login = false, 
-                updated_at = CURRENT_TIMESTAMP 
-            WHERE id = $2 
-            RETURNING id, cedula, proceso_name
-        `;
+        console.log(`🔐 Cambiando contraseña para usuario ID: ${userId}`);
 
-        const result = await db.query(updateQuery, [hashedPassword, userId]);
-        const rows = getRowsFromResult(result);
+        // Usar Supabase SDK directo
+        const { data: updateData, error: updateError } = await supabase
+            .from("adminProcesos")
+            .update({
+                password: hashedPassword,
+                primer_login: false
+            })
+            .eq("id", userId)
+            .select("id, cedula, proceso_name");
 
-        if (rows.length === 0) {
+        if (updateError) {
+            console.error("❌ Error al actualizar contraseña:", updateError);
+            throw updateError;
+        }
+
+        if (!updateData || updateData.length === 0) {
+            console.error("❌ Usuario no encontrado con ID:", userId);
             return res.status(404).json({
                 success: false,
                 message: 'Usuario no encontrado'
             });
         }
 
-        const updatedUser = rows[0];
+        const updatedUser = updateData[0];
+        console.log(`✅ Contraseña cambiada exitosamente para: ${updatedUser.cedula}`);
 
         res.json({
             success: true,
@@ -512,7 +519,7 @@ router.post('/procesos/cambiar-password', authenticateProceso, async (req, res) 
         });
 
     } catch (error) {
-        console.error('Error cambiando contraseña:', error.message);
+        console.error('❌ Error cambiando contraseña:', error.message);
         console.error('Stack:', error.stack);
         
         res.status(500).json({
