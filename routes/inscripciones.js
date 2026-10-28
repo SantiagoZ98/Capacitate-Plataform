@@ -61,7 +61,7 @@ router.get('/asistencia/proceso', authenticateAdminProceso, async (req, res) => 
       .from('resultados')
       .select('nombre, puntaje, aprobado, fecha_registro')
       .eq('aprobado', true)
-      .eq('proceso', 'Talento Humano');
+      .eq('proceso', 'Igualdad Laboral y No Discriminación');
 
     if (errorResultados) {
       console.error('❌ Error consultando resultados:', errorResultados);
@@ -114,12 +114,12 @@ router.get('/asistencia/proceso', authenticateAdminProceso, async (req, res) => 
         usuario_cargo: personalMap[nombre]?.cargo || '—',
         usuario_proceso: personalMap[nombre]?.proceso || '—',
         curso_id: 'tthh',
-        curso_nombre: 'Talento Humano',
+        curso_nombre: 'Igualdad Laboral y No Discriminación',
         curso_descripcion: 'Capacitación integrada de 4 módulos',
         curso_fecha_inicio: usuariosCursos[nombre]?.ultimaFecha,
         curso_duracion: 'Completado',
         curso_dirigido_a: 'Todo el personal',
-        curso_proceso: 'Talento Humano',
+        curso_proceso: 'Igualdad Laboral y No Discriminación',
         inicio_en: usuariosCursos[nombre]?.ultimaFecha,
         fin_en: usuariosCursos[nombre]?.ultimaFecha,
         estado: 'completado'
