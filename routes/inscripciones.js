@@ -115,7 +115,7 @@ router.get('/asistencia/proceso', authenticateAdminProceso, async (req, res) => 
         usuario_proceso: personalMap[nombre]?.proceso || '—',
         curso_id: 'tthh',
         curso_nombre: 'Igualdad Laboral y No Discriminación',
-        curso_descripcion: 'Capacitación integrada de 4 módulos',
+        curso_descripcion: '1. Derechos laborales de mujeres y hombres\n2. Igualdad de género\n3. Erradicación de violencia y no discriminación en un centro de trabajo\n4. Otros relacionados para establecer el trabajo de igual valor',
         curso_fecha_inicio: usuariosCursos[nombre]?.ultimaFecha,
         curso_duracion: 'Completado',
         curso_dirigido_a: 'Todo el personal',
