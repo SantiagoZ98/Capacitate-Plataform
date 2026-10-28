@@ -61,7 +61,7 @@ router.get('/asistencia/proceso', authenticateAdminProceso, async (req, res) => 
       .from('resultados')
       .select('nombre, puntaje, aprobado, fecha_registro')
       .eq('aprobado', true)
-      .eq('proceso', 'Igualdad Laboral y No Discriminación');
+      .eq('proceso', 'Talento Humano');
 
     if (errorResultados) {
       console.error('❌ Error consultando resultados:', errorResultados);
