@@ -21,6 +21,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/usuarios', usuarioRoutes);
 app.use('/api/progreso', progresoRoutes);
 app.use('/api/resultados', resultadosRoutes);
+// Alias para compatibilidad con frontend (evaluaciones)
+app.use('/api/evaluaciones', resultadosRoutes);
 
 app.listen(process.env.PORT, () => {
     console.log(`Servidor backend corriendo en puerto ${PORT}`);
