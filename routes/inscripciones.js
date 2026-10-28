@@ -13,58 +13,123 @@ const CURSOS_ESTATICOS = [
   'otrosRelacionados'
 ];
 
-// GET ASISTENCIA DEL PROCESO - Solo los 4 cursos estáticos
+// GET ASISTENCIA DEL PROCESO - Solo usuarios que completaron 4 cursos + aprobaron
 router.get('/asistencia/proceso', authenticateAdminProceso, async (req, res) => {
   try {
-    console.log('📖 Obteniendo asistencia de los 4 cursos estáticos');
+    console.log('📖 Obteniendo asistencia: usuarios que completaron 4 cursos + aprobaron prueba');
 
-    // Usar Supabase SDK para traer datos de procesos_curso
-    const { data, error } = await supabase
-      .from('procesos_curso')
-      .select(`
-        id,
-        usuario:personal(nombre, cedula_identidad, cargo, proceso),
-        curso:cursos(nombre, descripcion, fecha_inicio, duracion, dirigido_a, proceso),
-        fecha_inicio,
-        fecha_fin,
-        estado
-      `)
-      .in('curso_nombre', CURSOS_ESTATICOS)
-      .order('fecha_inicio', { ascending: false });
+    // 1. Obtener usuarios que completaron TODOS los 4 cursos
+    const { data: cursosCompletados, error: errorCursos } = await supabase
+      .from('cursos_completados')
+      .select('nombre, curso, fecha_completado')
+      .in('curso', ['derechos_laborales', 'igualdad_genero', 'talento_humano', 'otrosRelacionados']);
 
-    if (error) {
-      console.error('❌ Error consultando asistencia:', error);
+    if (errorCursos) {
+      console.error('❌ Error consultando cursos completados:', errorCursos);
       return res.status(500).json({
         success: false,
-        message: 'Error al obtener asistencia',
-        error: error.message
+        message: 'Error al obtener cursos completados',
+        error: errorCursos.message
       });
     }
 
-    // Transformar datos para que coincida con lo que espera el frontend
-    const registrosFormateados = (data || []).map(r => ({
-      id: r.id,
-      usuario_nombre: r.usuario?.nombre || '—',
-      cedula_identidad: r.usuario?.cedula_identidad || '—',
-      usuario_cargo: r.usuario?.cargo || '—',
-      usuario_proceso: r.usuario?.proceso || '—',
-      curso_id: r.curso?.id,
-      curso_nombre: r.curso?.nombre || '—',
-      curso_descripcion: r.curso?.descripcion || '—',
-      curso_fecha_inicio: r.curso?.fecha_inicio,
-      curso_duracion: r.curso?.duracion || '—',
-      curso_dirigido_a: r.curso?.dirigido_a || '—',
-      curso_proceso: r.curso?.proceso || '—',
-      inicio_en: r.fecha_inicio,
-      fin_en: r.fecha_fin,
-      estado: r.estado || 'sin iniciar'
-    }));
+    // Agrupar por usuario y contar cuántos cursos completó
+    const usuariosCursos = {};
+    (cursosCompletados || []).forEach(r => {
+      if (!usuariosCursos[r.nombre]) {
+        usuariosCursos[r.nombre] = { nombre: r.nombre, cursosCompletados: 0, ultimaFecha: r.fecha_completado };
+      }
+      usuariosCursos[r.nombre].cursosCompletados += 1;
+      if (new Date(r.fecha_completado) > new Date(usuariosCursos[r.nombre].ultimaFecha)) {
+        usuariosCursos[r.nombre].ultimaFecha = r.fecha_completado;
+      }
+    });
 
-    console.log(`✅ ${registrosFormateados.length} registros de asistencia obtenidos`);
+    // Filtrar solo usuarios que completaron los 4 cursos
+    const usuariosQue4Cursos = Object.values(usuariosCursos)
+      .filter(u => u.cursosCompletados === 4)
+      .map(u => u.nombre);
+
+    console.log(`✅ ${usuariosQue4Cursos.length} usuarios completaron los 4 cursos`);
+
+    if (usuariosQue4Cursos.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    // 2. Obtener resultados de prueba (aprobados)
+    const { data: resultados, error: errorResultados } = await supabase
+      .from('resultados')
+      .select('nombre, puntaje, aprobado, fecha_registro')
+      .eq('aprobado', true)
+      .eq('proceso', 'Talento Humano');
+
+    if (errorResultados) {
+      console.error('❌ Error consultando resultados:', errorResultados);
+      return res.status(500).json({
+        success: false,
+        message: 'Error al obtener resultados',
+        error: errorResultados.message
+      });
+    }
+
+    // Mapear aprobados
+    const usuariosAprobados = new Set();
+    (resultados || []).forEach(r => {
+      usuariosAprobados.add(r.nombre);
+    });
+
+    console.log(`✅ ${usuariosAprobados.size} usuarios aprobaron`);
+
+    // 3. Obtener datos personales
+    const { data: personal, error: errorPersonal } = await supabase
+      .from('personal')
+      .select('nombre, cedula_identidad, cargo, proceso');
+
+    if (errorPersonal) {
+      console.error('❌ Error consultando personal:', errorPersonal);
+      return res.status(500).json({
+        success: false,
+        message: 'Error al obtener datos personales',
+        error: errorPersonal.message
+      });
+    }
+
+    // Mapear personal
+    const personalMap = {};
+    (personal || []).forEach(p => {
+      personalMap[p.nombre] = {
+        cedula_identidad: p.cedula_identidad,
+        cargo: p.cargo,
+        proceso: p.proceso
+      };
+    });
+
+    // 4. Combinar: solo usuarios que hicieron 4 cursos + aprobaron
+    const registrosFiltrados = usuariosQue4Cursos
+      .filter(nombre => usuariosAprobados.has(nombre))
+      .map(nombre => ({
+        id: personalMap[nombre]?.cedula_identidad || nombre,
+        usuario_nombre: nombre,
+        cedula_identidad: personalMap[nombre]?.cedula_identidad || '—',
+        usuario_cargo: personalMap[nombre]?.cargo || '—',
+        usuario_proceso: personalMap[nombre]?.proceso || '—',
+        curso_id: 'tthh',
+        curso_nombre: 'Talento Humano',
+        curso_descripcion: 'Capacitación integrada de 4 módulos',
+        curso_fecha_inicio: usuariosCursos[nombre]?.ultimaFecha,
+        curso_duracion: 'Completado',
+        curso_dirigido_a: 'Todo el personal',
+        curso_proceso: 'Talento Humano',
+        inicio_en: usuariosCursos[nombre]?.ultimaFecha,
+        fin_en: usuariosCursos[nombre]?.ultimaFecha,
+        estado: 'completado'
+      }));
+
+    console.log(`✅ ${registrosFiltrados.length} usuarios completaron 4 cursos + aprobaron prueba`);
 
     res.json({
       success: true,
-      data: registrosFormateados
+      data: registrosFiltrados
     });
 
   } catch (err) {
