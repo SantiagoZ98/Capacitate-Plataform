@@ -233,7 +233,11 @@ router.post("/marcar-curso-completado", async (req, res) => {
     console.log(`✅ Cursos completados: ${cursoCompletados}/4 = ${nuevoProgreso}% progreso`);
 
     // 3. ACTUALIZAR usuariosprogreso CON EL PROCESO CORRECTO
-    const { data: updateData, error: updateError } = await supabase
+    let updateData = null;
+    let updateError = null;
+
+    // Intento 1: Actualizar con proceso específico
+    const result1 = await supabase
       .from("usuariosprogreso")
       .update({
         progreso: nuevoProgreso
@@ -242,14 +246,38 @@ router.post("/marcar-curso-completado", async (req, res) => {
       .eq("proceso", procesoUsuario)
       .select();
 
+    updateData = result1.data;
+    updateError = result1.error;
+
     if (updateError) {
-      console.error("❌ Error al actualizar usuariosprogreso:", updateError);
+      console.error("❌ Error en intento 1 (con proceso específico):", updateError);
       throw updateError;
     }
 
+    // Si no se actualizó con proceso específico, intenta actualizar sin filtrar por proceso
     if (!updateData || updateData.length === 0) {
-      // Si no existe, crear
-      console.log(`📝 Creando usuariosprogreso para ${nombre} con progreso ${nuevoProgreso}%`);
+      console.log(`⚠️ No se encontró con proceso "${procesoUsuario}", intentando actualizar sin filtrar proceso...`);
+      
+      const result2 = await supabase
+        .from("usuariosprogreso")
+        .update({
+          progreso: nuevoProgreso
+        })
+        .eq("nombre", nombre)
+        .select();
+
+      updateData = result2.data;
+      updateError = result2.error;
+
+      if (updateError) {
+        console.error("❌ Error en intento 2 (sin proceso):", updateError);
+        throw updateError;
+      }
+    }
+
+    if (!updateData || updateData.length === 0) {
+      // Si aún no existe, crear
+      console.log(`📝 Creando usuariosprogreso para ${nombre} con proceso ${procesoUsuario} y progreso ${nuevoProgreso}%`);
       const { data: insertProgreso, error: insertError2 } = await supabase
         .from("usuariosprogreso")
         .insert([{
