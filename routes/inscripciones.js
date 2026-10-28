@@ -9,7 +9,7 @@ const supabase = db.supabase;
 const CURSOS_ESTATICOS = [
   'derechos_laborales',
   'igualdad_genero',
-  'talento_humano',
+  'erradicacion_Violencia',
   'otrosRelacionados'
 ];
 
