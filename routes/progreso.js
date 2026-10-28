@@ -236,8 +236,7 @@ router.post("/marcar-curso-completado", async (req, res) => {
     const { data: updateData, error: updateError } = await supabase
       .from("usuariosprogreso")
       .update({
-        progreso: nuevoProgreso,
-        updated_at: new Date().toISOString()
+        progreso: nuevoProgreso
       })
       .eq("nombre", nombre)
       .eq("proceso", procesoUsuario)
@@ -315,8 +314,7 @@ router.put("/update", async (req, res) => {
     const { data: updateData, error: updateError } = await supabase
       .from("usuariosprogreso")
       .update({
-        prueba_aprobada,
-        updated_at: new Date().toISOString()
+        prueba_aprobada
       })
       .eq("nombre", nombre)
       .eq("proceso", procesoUsuario)
