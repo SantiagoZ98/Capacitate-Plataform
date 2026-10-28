@@ -32,10 +32,16 @@ router.post("/get", async (req, res) => {
     const { data: personalData, error: personalError } = await supabase
       .from("personal")
       .select("proceso")
-      .eq("nombre", nombre)
-      .single();
+      .eq("nombre", nombre);
 
-    const procesoUsuario = personalData?.proceso || "Administrativo";
+    let procesoUsuario = "Administrativo"; // Default
+    
+    if (!personalError && personalData && personalData.length > 0) {
+      procesoUsuario = personalData[0].proceso;
+    } else {
+      console.warn(`⚠️ No se encontró usuario '${nombre}' en tabla personal, usando default: ${procesoUsuario}`);
+    }
+    
     console.log(`👤 Proceso del usuario en /get: ${procesoUsuario}`);
 
     // Buscar usuario en usuariosprogreso CON PROCESO CORRECTO
@@ -179,15 +185,16 @@ router.post("/marcar-curso-completado", async (req, res) => {
     const { data: personalData, error: personalError } = await supabase
       .from("personal")
       .select("proceso")
-      .eq("nombre", nombre)
-      .single();
+      .eq("nombre", nombre);
 
-    if (personalError) {
-      console.warn(`⚠️ No se encontró proceso para ${nombre}:`, personalError.message);
-      // No es crítico, continuamos
+    let procesoUsuario = "Administrativo"; // Default
+    
+    if (!personalError && personalData && personalData.length > 0) {
+      procesoUsuario = personalData[0].proceso;
+    } else {
+      console.warn(`⚠️ No se encontró usuario '${nombre}' en tabla personal, usando default: ${procesoUsuario}`);
     }
-
-    const procesoUsuario = personalData?.proceso || "Administrativo"; // Default si no existe
+    
     console.log(`👤 Proceso del usuario: ${procesoUsuario}`);
 
     // 1. Guardar en cursos_completados usando Supabase directo
@@ -293,10 +300,16 @@ router.put("/update", async (req, res) => {
     const { data: personalData, error: personalError } = await supabase
       .from("personal")
       .select("proceso")
-      .eq("nombre", nombre)
-      .single();
+      .eq("nombre", nombre);
 
-    const procesoUsuario = personalData?.proceso || "Administrativo";
+    let procesoUsuario = "Administrativo"; // Default
+    
+    if (!personalError && personalData && personalData.length > 0) {
+      procesoUsuario = personalData[0].proceso;
+    } else {
+      console.warn(`⚠️ No se encontró usuario '${nombre}' en tabla personal, usando default: ${procesoUsuario}`);
+    }
+    
     console.log(`👤 Proceso del usuario en /update: ${procesoUsuario}`);
 
     const { data: updateData, error: updateError } = await supabase
