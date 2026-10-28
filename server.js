@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.js';
 import usuarioRoutes from './routes/usuarios.js';
 import progresoRoutes from './routes/progreso.js';
 import resultadosRoutes from "./routes/resultados.js";
+import inscripcionesRoutes from "./routes/inscripciones.js";
 
 dotenv.config();
 
@@ -21,6 +22,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/usuarios', usuarioRoutes);
 app.use('/api/progreso', progresoRoutes);
 app.use('/api/resultados', resultadosRoutes);
+app.use('/api/inscripciones', inscripcionesRoutes);
 // Alias para compatibilidad con frontend (evaluaciones)
 app.use('/api/evaluaciones', resultadosRoutes);
 

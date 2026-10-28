@@ -98,28 +98,87 @@ router.get("/resultados/mis-cursos", authenticateAdminProceso, async (req, res) 
 // GET RESUMEN PRUEBA TTHH - mejor resultado por usuario (solo admin proceso)
 router.get("/tthh/resumen", authenticateAdminProceso, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      `SELECT
-         r.nombre                                     AS usuario,
-         COALESCE(p.nombre, r.nombre)                AS nombre_completo,
-         COALESCE(p.cedula_identidad, r.nombre)      AS cedula,
-         COALESCE(p.cargo, '')                       AS cargo,
-         MAX(r.puntaje)                              AS mejor_puntaje,
-         COUNT(r.id)::int                            AS total_intentos,
-         BOOL_OR(r.aprobado)                         AS aprobado,
-         MAX(r.fecha_registro)                       AS ultima_fecha
-       FROM resultados r
-       LEFT JOIN personal p ON p.nombre = r.nombre
-       WHERE r.proceso = 'Talento Humano'
-       GROUP BY r.nombre, p.nombre, p.cedula_identidad, p.cargo
-       ORDER BY aprobado DESC, mejor_puntaje DESC`,
-      []
-    );
+    console.log("📖 Obteniendo resumen de resultados TTHH");
 
-    res.json({ ok: true, data: rows });
+    // Obtener todos los resultados de TTHH usando Supabase SDK
+    const { data: resultados, error: errorResultados } = await supabase
+      .from("resultados")
+      .select("nombre, puntaje, aprobado, fecha_registro")
+      .eq("proceso", "Talento Humano")
+      .order("fecha_registro", { ascending: false });
+
+    if (errorResultados) {
+      console.error("❌ Error consultando resultados:", errorResultados);
+      return res.status(500).json({
+        success: false,
+        message: "Error al obtener resultados",
+        error: errorResultados.message
+      });
+    }
+
+    // Obtener datos de personal (nombre completo, cédula, cargo)
+    const { data: personal, error: errorPersonal } = await supabase
+      .from("personal")
+      .select("nombre, cedula_identidad, cargo");
+
+    if (errorPersonal) {
+      console.error("❌ Error consultando personal:", errorPersonal);
+      return res.status(500).json({
+        success: false,
+        message: "Error al obtener datos personales",
+        error: errorPersonal.message
+      });
+    }
+
+    // Mapear personal por nombre para búsqueda rápida
+    const personalMap = {};
+    (personal || []).forEach(p => {
+      personalMap[p.nombre] = { cedula_identidad: p.cedula_identidad, cargo: p.cargo };
+    });
+
+    // Agrupar por usuario y calcular: mejor puntaje, total intentos, si aprobó, última fecha
+    const resumenPorUsuario = {};
+    (resultados || []).forEach(r => {
+      if (!resumenPorUsuario[r.nombre]) {
+        resumenPorUsuario[r.nombre] = {
+          usuario: r.nombre,
+          nombre_completo: personalMap[r.nombre]?.nombre_completo || r.nombre,
+          cedula: personalMap[r.nombre]?.cedula_identidad || r.nombre,
+          cargo: personalMap[r.nombre]?.cargo || '',
+          mejor_puntaje: r.puntaje,
+          total_intentos: 0,
+          aprobado: false,
+          ultima_fecha: r.fecha_registro
+        };
+      }
+
+      resumenPorUsuario[r.nombre].total_intentos += 1;
+      resumenPorUsuario[r.nombre].mejor_puntaje = Math.max(resumenPorUsuario[r.nombre].mejor_puntaje, r.puntaje);
+      resumenPorUsuario[r.nombre].aprobado = resumenPorUsuario[r.nombre].aprobado || r.aprobado;
+      
+      // Mantener la fecha más reciente
+      if (new Date(r.fecha_registro) > new Date(resumenPorUsuario[r.nombre].ultima_fecha)) {
+        resumenPorUsuario[r.nombre].ultima_fecha = r.fecha_registro;
+      }
+    });
+
+    // Convertir a array y ordenar: aprobados primero, luego por puntaje
+    const datos = Object.values(resumenPorUsuario).sort((a, b) => {
+      if (a.aprobado !== b.aprobado) return b.aprobado ? 1 : -1;
+      return b.mejor_puntaje - a.mejor_puntaje;
+    });
+
+    console.log(`✅ ${datos.length} usuarios con resultados TTHH`);
+
+    res.json({ ok: true, data: datos });
+
   } catch (err) {
     console.error("❌ Error en /resultados/tthh/resumen:", err);
-    res.status(500).json({ ok: false, message: "Error en el servidor" });
+    res.status(500).json({
+      ok: false,
+      message: "Error en el servidor",
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
